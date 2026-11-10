@@ -20,6 +20,13 @@ export const site = {
   legalUpdated: "10 novembre 2026",
 };
 
+// Base dei metadati Open Graph: chi ridefinisce `openGraph` in una pagina riparte da qui,
+// perché Next sostituisce l'oggetto del layout invece di unirlo.
+export const openGraphDefaults = {
+  siteName: site.name,
+  locale: "it_IT",
+} as const;
+
 export const nav = [
   { href: "/video", label: "Video" },
   { href: "/lunedi-ai", label: "Il lunedì dell'AI" },

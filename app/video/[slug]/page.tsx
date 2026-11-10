@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { YouTubeEmbed } from "@/components/youtube-embed";
 import { getVideos } from "@/lib/content";
-import { formatDate, site } from "@/lib/site";
+import { formatDate, openGraphDefaults } from "@/lib/site";
 
 type Params = PageProps<"/video/[slug]">["params"];
 
@@ -40,11 +40,13 @@ export async function generateMetadata({
     title: video.title,
     description: video.description,
     alternates: { canonical: `/video/${slug}` },
+    // L'immagine arriva da ./opengraph-image.tsx. `openGraph` qui sostituisce quello del layout,
+    // per questo si ripetono siteName e locale.
     openGraph: {
+      ...openGraphDefaults,
       type: "video.other",
       title: video.title,
       description: video.description,
-      images: [`https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`],
     },
   };
 }
