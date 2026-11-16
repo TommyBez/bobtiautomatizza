@@ -75,3 +75,27 @@ const shortDateFormat = new Intl.DateTimeFormat("it-IT", {
 export const formatDate = (iso: string) => dateFormat.format(new Date(iso));
 export const formatShortDate = (iso: string) =>
   shortDateFormat.format(new Date(iso));
+
+// Giorni che si leggono con una vocale iniziale: "dall'8", "all'11", "dall'1" (ma "dal 1°", cioè "primo").
+const elidedDays = new Set(["1", "8", "11"]);
+
+function withPreposition(prep: "da" | "a", day: string) {
+  const elided = elidedDays.has(day.match(/^\d+°?/)?.[0] ?? "");
+  return elided ? `${prep}ll'${day}` : `${prep}l ${day}`;
+}
+
+/**
+ * Il periodo di una puntata è scritto con il trattino, es. "6 – 13 novembre 2026": da solo si legge così.
+ * Dopo una preposizione diventa "dal 6 al 13 novembre 2026", anche a cavallo di mesi e anni
+ * ("dal 29 dicembre 2026 al 4 gennaio 2027"). Un periodo senza trattino è un errore nei contenuti:
+ * le pagine si generano in build, quindi la build si ferma invece di pubblicare una frase sbagliata.
+ */
+export function formatPeriodFromTo(period: string) {
+  const parts = period.split("–").map((part) => part.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(
+      `Periodo non valido: "${period}". Formato atteso: "6 – 13 novembre 2026".`,
+    );
+  }
+  return `${withPreposition("da", parts[0])} ${withPreposition("a", parts[1])}`;
+}

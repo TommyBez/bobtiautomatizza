@@ -12,6 +12,7 @@ import {
   Section,
   Text,
 } from "react-email";
+import { formatPeriodFromTo } from "../lib/site";
 import { color, font } from "./theme";
 
 export type LunediAIProps = {
@@ -85,7 +86,7 @@ export function LunediAI({
                 Il lunedì dell&apos;AI
               </strong>
               <br />
-              {date} · novità dal {period}
+              {date} · novità {formatPeriodFromTo(period)}
             </Text>
           </Section>
 
