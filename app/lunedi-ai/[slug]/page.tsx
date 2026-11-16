@@ -7,7 +7,7 @@ import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { YouTubeEmbed } from "@/components/youtube-embed";
 import { getPillole } from "@/lib/content";
-import { formatDate, site } from "@/lib/site";
+import { formatDate, formatPeriodFromTo, site } from "@/lib/site";
 
 type Params = PageProps<"/lunedi-ai/[slug]">["params"];
 
@@ -31,7 +31,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const pillola = await getPillola(slug);
   if (!pillola) return {};
-  const description = `Le novità AI dal ${pillola.period}: ${pillola.items.map((i) => i.title).join("; ")}.`;
+  const description = `Le novità AI ${formatPeriodFromTo(pillola.period)}: ${pillola.items.map((i) => i.title).join("; ")}.`;
   return {
     title: `${pillola.title} · ${site.monday}`,
     description,
@@ -82,7 +82,7 @@ async function PillolaDetail({ params }: { params: Params }) {
             {pillola.title}
           </h1>
           <p className="mt-3 text-lg text-muted-foreground">
-            Le novità AI della settimana dal {pillola.period}.
+            Le novità AI della settimana {formatPeriodFromTo(pillola.period)}.
           </p>
 
           <ol className="mt-8 space-y-4">
