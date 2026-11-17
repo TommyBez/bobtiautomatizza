@@ -53,7 +53,7 @@ export function YouTubeEmbed({
         <button
           type="button"
           onClick={() => setPlaying(true)}
-          className="group absolute inset-0 size-full"
+          className="group absolute inset-0 size-full outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:ring-ring after:ring-inset focus-visible:after:ring-3"
           aria-label={`Guarda il video: ${title}`}
         >
           <Image
@@ -69,7 +69,8 @@ export function YouTubeEmbed({
             sizes={sizes}
             className="object-cover opacity-90"
           />
-          <span className="absolute inset-0 m-auto flex size-16 items-center justify-center rounded-full bg-background text-primary shadow-lg transition group-hover:scale-105">
+          {/* In basso al centro: nelle copertine e nelle miniature dei video il testo sta in alto e al centro. */}
+          <span className="absolute inset-x-0 bottom-6 mx-auto flex size-16 items-center justify-center rounded-full bg-background text-primary shadow-lg transition group-hover:scale-105 group-focus-visible:ring-3 group-focus-visible:ring-ring">
             <PlayIcon className="size-7 fill-current" />
           </span>
         </button>
