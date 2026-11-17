@@ -14,6 +14,7 @@ import { YouTubeEmbed } from "@/components/youtube-embed";
 import { getVideos } from "@/lib/content";
 import { formatDate, openGraphDefaults, site } from "@/lib/site";
 import { getVideoCover } from "@/lib/video-covers";
+import { showsYoutubeTitle } from "@/lib/video-titles";
 
 type Params = PageProps<"/video/[slug]">["params"];
 
@@ -83,9 +84,11 @@ async function VideoDetail({ params }: { params: Params }) {
         <h1 className="font-heading text-3xl leading-tight font-bold text-balance sm:text-5xl">
           {video.title}
         </h1>
-        <p className="mt-3 text-lg text-muted-foreground">
-          Dal video «{video.youtubeTitle}»
-        </p>
+        {showsYoutubeTitle(video) ? (
+          <p className="mt-3 text-lg text-muted-foreground">
+            Dal video «{video.youtubeTitle}»
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <time dateTime={video.date}>{formatDate(video.date)}</time>
           <span aria-hidden="true">·</span>
