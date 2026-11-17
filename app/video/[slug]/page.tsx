@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { YouTubeEmbed } from "@/components/youtube-embed";
 import { getVideos } from "@/lib/content";
-import { formatDate, openGraphDefaults } from "@/lib/site";
+import { formatDate, openGraphDefaults, site } from "@/lib/site";
+import { getVideoCover } from "@/lib/video-covers";
 
 type Params = PageProps<"/video/[slug]">["params"];
 
@@ -70,6 +71,7 @@ async function VideoDetail({ params }: { params: Params }) {
 
   const { default: Body } = await import(`@/content/video/${slug}.mdx`);
   const others = (await getVideos()).filter((v) => v.slug !== slug).slice(0, 3);
+  const cover = getVideoCover(slug);
 
   return (
     <>
@@ -114,6 +116,7 @@ async function VideoDetail({ params }: { params: Params }) {
             id={video.youtubeId}
             title={video.youtubeTitle}
             format={video.format}
+            cover={cover}
           />
         </div>
 
@@ -175,21 +178,25 @@ async function VideoDetail({ params }: { params: Params }) {
         </section>
       ) : null}
 
-      <JsonLd
-        data={{
-          "@context": "https://schema.org",
-          "@type": "VideoObject",
-          name: video.title,
-          description: video.description,
-          thumbnailUrl: [
-            `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`,
-          ],
-          uploadDate: video.date,
-          embedUrl: `https://www.youtube-nocookie.com/embed/${video.youtubeId}`,
-          contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
-          inLanguage: "it",
-        }}
-      />
+      {/* Senza l'ID di YouTube non c'è ancora un video da descrivere: niente VideoObject. */}
+      {video.youtubeId ? (
+        <JsonLd
+          data={{
+            "@context": "https://schema.org",
+            "@type": "VideoObject",
+            name: video.title,
+            description: video.description,
+            thumbnailUrl: [
+              ...(cover ? [new URL(cover.src, site.url).toString()] : []),
+              `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`,
+            ],
+            uploadDate: video.date,
+            embedUrl: `https://www.youtube-nocookie.com/embed/${video.youtubeId}`,
+            contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
+            inLanguage: "it",
+          }}
+        />
+      ) : null}
     </>
   );
 }
