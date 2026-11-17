@@ -12,7 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { YouTubeEmbed } from "@/components/youtube-embed";
 import { getVideos } from "@/lib/content";
-import { formatDate, openGraphDefaults } from "@/lib/site";
+import { formatDate, openGraphDefaults, site } from "@/lib/site";
+import { getVideoCover } from "@/lib/video-covers";
+import { showsYoutubeTitle } from "@/lib/video-titles";
 
 type Params = PageProps<"/video/[slug]">["params"];
 
@@ -70,6 +72,7 @@ async function VideoDetail({ params }: { params: Params }) {
 
   const { default: Body } = await import(`@/content/video/${slug}.mdx`);
   const others = (await getVideos()).filter((v) => v.slug !== slug).slice(0, 3);
+  const cover = getVideoCover(slug);
 
   return (
     <>
@@ -81,9 +84,11 @@ async function VideoDetail({ params }: { params: Params }) {
         <h1 className="font-heading text-3xl leading-tight font-bold text-balance sm:text-5xl">
           {video.title}
         </h1>
-        <p className="mt-3 text-lg text-muted-foreground">
-          Dal video «{video.youtubeTitle}»
-        </p>
+        {showsYoutubeTitle(video) ? (
+          <p className="mt-3 text-lg text-muted-foreground">
+            Dal video «{video.youtubeTitle}»
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <time dateTime={video.date}>{formatDate(video.date)}</time>
           <span aria-hidden="true">·</span>
@@ -114,6 +119,7 @@ async function VideoDetail({ params }: { params: Params }) {
             id={video.youtubeId}
             title={video.youtubeTitle}
             format={video.format}
+            cover={cover}
           />
         </div>
 
@@ -175,21 +181,25 @@ async function VideoDetail({ params }: { params: Params }) {
         </section>
       ) : null}
 
-      <JsonLd
-        data={{
-          "@context": "https://schema.org",
-          "@type": "VideoObject",
-          name: video.title,
-          description: video.description,
-          thumbnailUrl: [
-            `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`,
-          ],
-          uploadDate: video.date,
-          embedUrl: `https://www.youtube-nocookie.com/embed/${video.youtubeId}`,
-          contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
-          inLanguage: "it",
-        }}
-      />
+      {/* Senza l'ID di YouTube non c'è ancora un video da descrivere: niente VideoObject. */}
+      {video.youtubeId ? (
+        <JsonLd
+          data={{
+            "@context": "https://schema.org",
+            "@type": "VideoObject",
+            name: video.title,
+            description: video.description,
+            thumbnailUrl: [
+              ...(cover ? [new URL(cover.src, site.url).toString()] : []),
+              `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`,
+            ],
+            uploadDate: video.date,
+            embedUrl: `https://www.youtube-nocookie.com/embed/${video.youtubeId}`,
+            contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
+            inLanguage: "it",
+          }}
+        />
+      ) : null}
     </>
   );
 }
