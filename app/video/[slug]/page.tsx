@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { YouTubeEmbed } from "@/components/youtube-embed";
 import { getVideos } from "@/lib/content";
+import { videoObjectJsonLd } from "@/lib/json-ld";
 import { formatDate, openGraphDefaults, site } from "@/lib/site";
 import { getVideoCover } from "@/lib/video-covers";
 import { showsYoutubeTitle } from "@/lib/video-titles";
@@ -184,20 +185,10 @@ async function VideoDetail({ params }: { params: Params }) {
       {/* Senza l'ID di YouTube non c'è ancora un video da descrivere: niente VideoObject. */}
       {video.youtubeId ? (
         <JsonLd
-          data={{
-            "@context": "https://schema.org",
-            "@type": "VideoObject",
-            name: video.title,
-            description: video.description,
-            thumbnailUrl: [
-              ...(cover ? [new URL(cover.src, site.url).toString()] : []),
-              `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`,
-            ],
-            uploadDate: video.date,
-            embedUrl: `https://www.youtube-nocookie.com/embed/${video.youtubeId}`,
-            contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
-            inLanguage: "it",
-          }}
+          data={videoObjectJsonLd(
+            video,
+            cover ? [new URL(cover.src, site.url).toString()] : [],
+          )}
         />
       ) : null}
     </>
