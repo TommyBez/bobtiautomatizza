@@ -83,10 +83,18 @@ function invalid(value: unknown, where: string, why: string): never {
   );
 }
 
+/** Ultima garanzia: ogni valore accettato corrisponde a un istante, quindi `toEpoch` non dà mai NaN. */
+function withInstant(value: string, where: string): IsoDateTime {
+  if (Number.isNaN(Date.parse(value))) {
+    invalid(value, where, "non corrisponde a un istante valido");
+  }
+  return value as IsoDateTime;
+}
+
 /**
  * Restituisce `value` come `IsoDateTime` oppure lancia un errore che indica `where`
  * (es. il file del contenuto). Rifiuta: date senza ora o senza fuso, date e ore inesistenti,
- * `-00:00`, offset diversi da quello di Europe/Rome in quell'istante, e le ore locali che sul cambio
+ * `-00:00`, offset con minuti fuori scala, offset scritti diversamente da quello di Europe/Rome in quell'istante, e le ore locali che sul cambio
  * d'ora non esistono (29 marzo 2026, 02:00–02:59) o sono ambigue (25 ottobre 2026, 02:00–02:59).
  */
 export function parseIsoDateTime(value: unknown, where: string): IsoDateTime {
@@ -105,17 +113,23 @@ export function parseIsoDateTime(value: unknown, where: string): IsoDateTime {
     invalid(value, where, "non è una data e ora esistente");
   }
   const [sign, offsetHours, offsetMinutes] = [m[8], m[9], m[10]];
-  if (sign === undefined) return value as IsoDateTime; // "Z": è già un istante
+  if (sign === undefined) return withInstant(value, where); // "Z": è già un istante
 
-  if (sign === "-" && offsetHours === "00" && offsetMinutes === "00") {
+  const written = `${sign}${offsetHours}:${offsetMinutes}`;
+  if (Number(offsetMinutes) > 59) {
+    invalid(
+      value,
+      where,
+      `ha un offset non valido (${written}): i minuti vanno da 00 a 59`,
+    );
+  }
+  if (written === "-00:00") {
     invalid(
       value,
       where,
       'usa "-00:00", che in RFC 3339 vuol dire fuso sconosciuto',
     );
   }
-  const minutes = Number(offsetHours) * 60 + Number(offsetMinutes);
-  const offset = sign === "-" ? -minutes : minutes;
   // Gli offset di Roma attorno a quell'ora (24 ore prima e dopo coprono qualsiasi cambio d'ora),
   // e tra questi quelli per cui quell'ora locale esiste davvero.
   const around = new Set([
@@ -139,14 +153,16 @@ export function parseIsoDateTime(value: unknown, where: string): IsoDateTime {
       `è un'ora che a Roma è ambigua (cambio d'ora): usa l'UTC con "Z"`,
     );
   }
-  if (matching[0] !== offset) {
+  // Confronto testuale con la forma canonica: "+00:60" vale +01:00 ma non è un offset ISO 8601 valido.
+  const expected = formatOffset(matching[0]);
+  if (written !== expected) {
     invalid(
       value,
       where,
-      `ha offset ${formatOffset(offset)}, ma a Roma in quell'istante è ${formatOffset(matching[0])}`,
+      `ha offset ${written}, ma a Roma in quell'istante è ${expected}`,
     );
   }
-  return value as IsoDateTime;
+  return withInstant(value, where);
 }
 
 /** Restituisce `value` se è una data di calendario esistente (`AAAA-MM-GG`), altrimenti lancia un errore. */

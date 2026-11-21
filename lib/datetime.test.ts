@@ -8,8 +8,11 @@ import {
   withValidDate,
 } from "./datetime.ts";
 
-const accepts = (value: string) =>
+/** Accettato vuol dire anche: corrisponde a un istante (toEpoch non è mai NaN). */
+const accepts = (value: string) => {
   assert.equal(parseIsoDateTime(value, "test"), value, value);
+  assert.ok(Number.isFinite(toEpoch(parseIsoDateTime(value, "test"))), value);
+};
 const rejects = (value: unknown, message: RegExp) =>
   assert.throws(
     () => parseIsoDateTime(value, "test"),
@@ -114,6 +117,60 @@ test("rifiuta -00:00 e gli offset che non sono quelli di Roma in quell'istante",
     /ha offset \+01:00, ma a Roma in quell'istante è \+02:00/,
   );
   rejects("2026-11-12T09:00:31+15:00", /ha offset \+15:00/);
+});
+
+test("rifiuta gli offset malformati, anche se numericamente sarebbero giusti", () => {
+  // "+00:60" vale +01:00 e "+01:60" vale +02:00, ma non sono offset ISO 8601: prima passavano e davano NaN.
+  rejects(
+    "2026-11-12T09:00:31+00:60",
+    /offset non valido \(\+00:60\): i minuti vanno da 00 a 59/,
+  );
+  rejects(
+    "2026-07-12T10:00:31+01:60",
+    /offset non valido \(\+01:60\): i minuti vanno da 00 a 59/,
+  );
+  rejects("2026-11-12T09:00:31+01:99", /offset non valido/);
+  // Minuti nella scala ma offset diverso da quello di Roma, testualmente.
+  rejects(
+    "2026-11-12T09:00:31+01:01",
+    /ha offset \+01:01, ma a Roma in quell'istante è \+01:00/,
+  );
+  rejects("2026-11-12T09:00:31+24:00", /ha offset \+24:00/);
+  // La forma giusta passa e ha un istante.
+  accepts("2026-11-12T10:00:31+01:00");
+  accepts("2026-07-12T11:00:31+02:00");
+});
+
+test("ogni valore accettato ha un istante valido", () => {
+  const samples: string[] = [];
+  // Ogni ora di due giorni di cambio d'ora e di due giorni normali, con tutti gli offset plausibili.
+  for (const day of ["2026-03-29", "2026-10-25", "2026-01-15", "2026-07-15"]) {
+    for (let h = 0; h < 24; h++) {
+      for (const zone of [
+        "Z",
+        "+01:00",
+        "+02:00",
+        "+00:60",
+        "+01:60",
+        "-00:00",
+      ]) {
+        samples.push(`${day}T${String(h).padStart(2, "0")}:30:00${zone}`);
+      }
+    }
+  }
+  let accepted = 0;
+  for (const value of samples) {
+    try {
+      const parsed = parseIsoDateTime(value, "test");
+      accepted++;
+      assert.ok(Number.isFinite(toEpoch(parsed)), value);
+    } catch (error) {
+      if (error instanceof assert.AssertionError) throw error;
+    }
+  }
+  // Z: 4 giorni × 24 ore. Offset giusto: 24 ore nei giorni normali, 23 nei due cambi d'ora
+  // (le 02:30 del 29/3 non esistono, quelle del 25/10 sono ambigue). Mai +00:60, +01:60, -00:00.
+  assert.equal(accepted, 4 * 24 + 24 + 24 + 23 + 23);
 });
 
 test("cambio d'ora del 29 marzo 2026: le 02:00–02:59 a Roma non esistono", () => {

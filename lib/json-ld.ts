@@ -8,16 +8,31 @@ import {
 } from "./datetime.ts";
 import { schemaDateTimeProperties } from "./schema-datetime.ts";
 
+/** Il JSON-LD così come viene scritto nella pagina: solo valori JSON, dopo ogni `toJSON()`. */
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+type JsonObject = { [key: string]: Json };
+
 /**
- * Proprietà che le guide di Google trattano come DateTime per un certo tipo, anche se schema.org
- * ammetterebbe una sola data. Fonte: https://developers.google.com/search/docs/appearance/structured-data/video
- * (`uploadDate`, `expires`; `publication` di tipo BroadcastEvent con `startDate`, `endDate`).
+ * Proprietà che la guida di Google tratta come DateTime anche se schema.org ammetterebbe una sola data.
+ * Fonte: https://developers.google.com/search/docs/appearance/structured-data/video
+ * - VideoObject: `uploadDate`, `expires`;
+ * - il BroadcastEvent dentro `VideoObject.publication` (badge LIVE): `startDate`, `endDate`.
+ * Un BroadcastEvent autonomo resta alle regole di schema.org, che per startDate ammettono una data.
  */
-const googleDateTimeProperties: Readonly<Record<string, ReadonlySet<string>>> =
-  {
-    VideoObject: new Set(["uploadDate", "expires"]),
-    BroadcastEvent: new Set(["startDate", "endDate"]),
-  };
+const videoObjectDateTimes = new Set(["uploadDate", "expires"]);
+const liveBroadcastDateTimes = new Set(["startDate", "endDate"]);
+
+/** Datatype JSON-LD di un oggetto valore `{"@value": …, "@type": …}`. */
+const dateTimeDatatypes = new Set([
+  "xsd:dateTime",
+  "http://www.w3.org/2001/XMLSchema#dateTime",
+  "DateTime",
+]);
+const dateDatatypes = new Set([
+  "xsd:date",
+  "http://www.w3.org/2001/XMLSchema#date",
+  "Date",
+]);
 
 /** "https://schema.org/uploadDate", "http://schema.org/uploadDate" e "schema:uploadDate" → "uploadDate". */
 function schemaName(name: string) {
@@ -31,49 +46,23 @@ function schemaName(name: string) {
   return name;
 }
 
-function typesOf(node: unknown): string[] {
-  if (node === null || typeof node !== "object") return [];
-  const type = (node as Record<string, unknown>)["@type"];
+const isObject = (value: Json): value is JsonObject =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+function typesOf(node: JsonObject): string[] {
+  const type = node["@type"];
   const types = Array.isArray(type) ? type : [type];
   return types.filter((t) => typeof t === "string").map(schemaName);
 }
 
-type DateTimeRule = {
+type Rule = {
   /** true = serve un DateTime; false = lo schema ammette anche Date, Time, Text, ecc. */
   strict: boolean;
   allowsDate: boolean;
 };
 
-function ruleFor(holder: unknown, key: string): DateTimeRule | undefined {
-  const property = schemaName(key);
-  if (!Object.hasOwn(schemaDateTimeProperties, property)) return undefined;
-  const others = schemaDateTimeProperties[property];
-  const strict =
-    others.length === 0 ||
-    typesOf(holder).some((t) => googleDateTimeProperties[t]?.has(property));
-  return { strict, allowsDate: others.includes("Date") };
-}
-
-const isObject = (value: unknown): value is object =>
-  value !== null && typeof value === "object";
-
-/**
- * Controlla un valore di una proprietà DateTime:
- * - dove serve un DateTime (solo DateTime per schema.org, o DateTime per Google), deve essere `IsoDateTime`;
- * - dove lo schema ammette anche altro, un valore che inizia come un datetime deve essere completo e valido,
- *   una data `AAAA-MM-GG` deve esistere, e i valori Time, Text, URL o numerici restano liberi.
- * Restituisce true se il valore è un contenitore (array o `{"@value": …}`) i cui elementi vanno controllati.
- */
-function checkValue(value: unknown, rule: DateTimeRule, path: string): boolean {
-  if (
-    value === undefined ||
-    typeof value === "function" ||
-    typeof value === "symbol"
-  ) {
-    return false; // JSON.stringify non li scrive
-  }
-  if (Array.isArray(value) || (isObject(value) && "@value" in value))
-    return true;
+/** Valore scalare di una proprietà DateTime (vedi la regola in `serializeJsonLd`). */
+function checkScalar(value: Json, rule: Rule, path: string) {
   if (
     rule.strict ||
     (typeof value === "string" && looksLikeIsoDateTime.test(value))
@@ -86,49 +75,107 @@ function checkValue(value: unknown, rule: DateTimeRule, path: string): boolean {
   ) {
     parseIsoDate(value, path);
   }
-  return false;
+}
+
+/** Oggetto valore `{"@value": …}`: un datatype esplicito DateTime o Date vale più della regola della proprietà. */
+function checkValueObject(
+  node: JsonObject,
+  rule: Rule | undefined,
+  path: string,
+) {
+  const value = node["@value"];
+  const datatype =
+    typeof node["@type"] === "string" ? schemaName(node["@type"]) : "";
+  const at = `${path}.@value`;
+  if (dateTimeDatatypes.has(datatype)) {
+    parseIsoDateTime(value, at);
+  } else if (dateDatatypes.has(datatype) && !rule?.strict) {
+    if (typeof value !== "string") parseIsoDateTime(value, at); // errore: non è una stringa
+    parseIsoDate(value as string, at);
+  } else if (rule) {
+    checkScalar(value, rule, at);
+  }
+}
+
+/** Valore di una proprietà DateTime: scalare, array di valori o oggetto valore. */
+function checkProperty(value: Json, rule: Rule, path: string) {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => {
+      checkProperty(item, rule, `${path}[${i}]`);
+    });
+  } else if (isObject(value) && "@value" in value) {
+    checkValueObject(value, rule, path);
+  } else if (isObject(value) && !rule.strict) {
+    visitNode(value, path, false); // un nodo dove lo schema ammette anche altro: si controlla il suo interno
+  } else {
+    checkScalar(value, rule, path); // dove serve un DateTime, anche null, numeri e nodi sono errori
+  }
+}
+
+function visitValue(value: Json, path: string, inVideoPublication: boolean) {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => {
+      visitValue(item, `${path}[${i}]`, inVideoPublication);
+    });
+  } else if (isObject(value)) {
+    visitNode(value, path, inVideoPublication);
+  }
+}
+
+function visitNode(
+  node: JsonObject,
+  path: string,
+  inVideoPublication: boolean,
+) {
+  if ("@value" in node) {
+    checkValueObject(node, undefined, path);
+    return;
+  }
+  const types = typesOf(node);
+  const isVideo = types.includes("VideoObject");
+  const googleDateTimes = new Set([
+    ...(isVideo ? videoObjectDateTimes : []),
+    ...(inVideoPublication && types.includes("BroadcastEvent")
+      ? liveBroadcastDateTimes
+      : []),
+  ]);
+  for (const [key, value] of Object.entries(node)) {
+    const at = `${path}.${key}`;
+    if (key === "@context" || key === "@type" || key === "@id") continue;
+    const property = schemaName(key);
+    if (Object.hasOwn(schemaDateTimeProperties, property)) {
+      const others = schemaDateTimeProperties[property];
+      const rule = {
+        strict: others.length === 0 || googleDateTimes.has(property),
+        allowsDate: others.includes("Date"),
+      };
+      checkProperty(value, rule, at);
+    } else {
+      visitValue(value, at, isVideo && property === "publication");
+    }
+  }
 }
 
 /**
  * Serializza il JSON-LD per lo `<script type="application/ld+json">`, con `<` sostituito per evitare XSS
- * (come nella guida JSON-LD di Next.js). Prima di scrivere ogni valore controlla tutte le proprietà
- * schema.org che ammettono un DateTime, a qualunque profondità e anche in forma estesa
- * ("https://schema.org/uploadDate"). Il controllo gira dentro il replacer di JSON.stringify, quindi vede
- * il valore effettivamente serializzato, cioè dopo un eventuale `toJSON()`. Un valore sbagliato lancia
- * un errore con il percorso, es. `JSON-LD.publication[0].startDate`.
+ * (come nella guida JSON-LD di Next.js), e lo controlla prima di restituirlo.
+ *
+ * Il controllo legge il JSON **effettivamente emesso** (serializzato e riletto con JSON.parse), quindi vede
+ * tipi e valori dopo ogni `toJSON()`, gli `undefined` negli array diventati `null`, le date già convertite.
+ * Copre tutte le proprietà schema.org che ammettono un DateTime, a qualunque profondità e anche in forma
+ * estesa ("https://schema.org/uploadDate"):
+ * - dove serve un DateTime (unico tipo ammesso da schema.org, o DateTime per Google) deve esserci
+ *   un `IsoDateTime`: data, ora e fuso validi;
+ * - dove lo schema ammette anche altro, un valore scritto come datetime deve comunque essere completo,
+ *   una data `AAAA-MM-GG` deve esistere, e i valori Time, Text, URL o numerici restano liberi;
+ * - un oggetto valore con datatype esplicito (`"@type": "xsd:dateTime"`) deve rispettarlo, ovunque sia.
+ * Un valore sbagliato lancia un errore con il percorso, es. `JSON-LD.publication[0].startDate`.
  */
 export function serializeJsonLd(data: object): string {
-  const paths = new WeakMap<object, string>();
-  // Array e oggetti `{"@value": …}` che sono il valore di una proprietà DateTime: i loro elementi
-  // si controllano quando il replacer li visita, cioè anche loro dopo `toJSON()`.
-  const containers = new WeakMap<object, DateTimeRule>();
-
-  const json = JSON.stringify(
-    data,
-    function (this: unknown, key: string, value: unknown) {
-      const holder = this as object;
-      const parent = paths.get(holder) ?? "JSON-LD";
-      const path =
-        key === ""
-          ? "JSON-LD"
-          : Array.isArray(holder)
-            ? `${parent}[${key}]`
-            : `${parent}.${key}`;
-
-      const inherited = containers.get(holder);
-      const rule =
-        inherited && (Array.isArray(holder) || key === "@value")
-          ? inherited
-          : key !== "" && !Array.isArray(holder)
-            ? ruleFor(holder, key)
-            : undefined;
-      if (rule && checkValue(value, rule, path) && isObject(value)) {
-        containers.set(value, rule);
-      }
-      if (isObject(value)) paths.set(value, path);
-      return value;
-    },
-  );
+  const json = JSON.stringify(data);
+  if (typeof json !== "string")
+    throw new Error("JSON-LD: il valore non è serializzabile");
+  visitValue(JSON.parse(json) as Json, "JSON-LD", false);
   return json.replace(/</g, "\\u003c");
 }
 

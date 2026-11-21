@@ -188,10 +188,113 @@ test("controlla solo i DateTime: Date e Time validi di altri schemi passano", ()
     { "@type": "Event", startDate: "2026-11-31" },
     /non è una data esistente/,
   );
-  // Per Google uploadDate, expires e lo startDate di BroadcastEvent sono DateTime: la sola data non basta.
+  // Per Google uploadDate ed expires del VideoObject sono DateTime: la sola data non basta.
   rejects(video({ uploadDate: "2026-11-12" }), /non ha il fuso/);
+});
+
+test("BroadcastEvent: DateTime obbligatorio solo dentro VideoObject.publication", () => {
+  // Badge LIVE della guida Google: publication del VideoObject.
   rejects(
-    { "@type": "BroadcastEvent", endDate: "2026-11-12" },
-    /endDate: .* non ha il fuso/,
+    video({
+      publication: {
+        "@type": "BroadcastEvent",
+        isLiveBroadcast: true,
+        startDate: "2026-11-12",
+      },
+    }),
+    /JSON-LD\.publication\.startDate: "2026-11-12" non ha il fuso/,
   );
+  rejects(
+    video({
+      "https://schema.org/publication": [
+        { "@type": "https://schema.org/BroadcastEvent", endDate: "2026-11-12" },
+      ],
+    }),
+    /publication\[0\]\.endDate: "2026-11-12" non ha il fuso/,
+  );
+  // Un BroadcastEvent autonomo segue schema.org, che per startDate/endDate ammette una data.
+  assert.doesNotThrow(() =>
+    assertJsonLdDateTimes({
+      "@type": "BroadcastEvent",
+      startDate: "2026-11-12",
+      endDate: "2026-11-13",
+    }),
+  );
+  // …e anche in un altro nodo che non è un VideoObject.
+  assert.doesNotThrow(() =>
+    assertJsonLdDateTimes({
+      "@type": "Event",
+      publication: { "@type": "BroadcastEvent", startDate: "2026-11-12" },
+    }),
+  );
+  // Ma un datetime scritto, ovunque sia, deve comunque essere completo.
+  rejects(
+    { "@type": "BroadcastEvent", startDate: "2026-11-12T21:00" },
+    /non ha il fuso/,
+  );
+});
+
+test("il controllo legge tipi e valori del JSON emesso, non dell'oggetto di partenza", () => {
+  // @type con toJSON(): nel JSON emesso è un VideoObject, quindi uploadDate deve essere un DateTime.
+  const emitted = {
+    "@type": { toJSON: () => "VideoObject" },
+    uploadDate: "2026-11-12",
+  };
+  assert.match(JSON.stringify(emitted), /"@type":"VideoObject"/);
+  rejects(emitted, /JSON-LD\.uploadDate: "2026-11-12" non ha il fuso/);
+  rejects(
+    {
+      "@type": ["Thing", { toJSON: () => "https://schema.org/VideoObject" }],
+      expires: "2026-12-31",
+    },
+    /JSON-LD\.expires: "2026-12-31" non ha il fuso/,
+  );
+  // [undefined] viene scritto come [null]: null non è un datetime.
+  rejects(
+    video({ uploadDate: [undefined] }),
+    /JSON-LD\.uploadDate\[0\]: null non è una stringa/,
+  );
+  rejects(
+    video({ contentReferenceTime: [() => 1] }),
+    /contentReferenceTime\[0\]: null/,
+  );
+  // Datatype dichiarato esplicitamente: xsd:dateTime con la sola data è un errore, ovunque sia.
+  rejects(
+    video({
+      datePublished: { "@value": "2026-11-12", "@type": "xsd:dateTime" },
+    }),
+    /JSON-LD\.datePublished\.@value: "2026-11-12" non ha il fuso/,
+  );
+  rejects(
+    video({
+      dateModified: {
+        "@value": "2026-11-12",
+        "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
+      },
+    }),
+    /dateModified\.@value/,
+  );
+  rejects(
+    {
+      "@type": "Thing",
+      qualcosa: { "@value": "domani", "@type": "xsd:dateTime" },
+    },
+    /JSON-LD\.qualcosa\.@value: "domani"/,
+  );
+  // xsd:date con una data valida, dove lo schema la ammette, passa; dove serve un DateTime no.
+  assert.doesNotThrow(() =>
+    assertJsonLdDateTimes(
+      video({ datePublished: { "@value": "2026-11-12", "@type": "xsd:date" } }),
+    ),
+  );
+  rejects(
+    video({ uploadDate: { "@value": "2026-11-12", "@type": "xsd:date" } }),
+    /uploadDate\.@value: "2026-11-12" non ha il fuso/,
+  );
+  // Quello che viene scritto nella pagina è esattamente il JSON controllato.
+  const data = video({
+    uploadDate: new Date("2026-11-12T08:00:31Z"),
+    extra: [undefined],
+  });
+  assert.equal(serializeJsonLd(data), JSON.stringify(data));
 });
