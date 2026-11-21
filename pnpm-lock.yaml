@@ -90,6 +90,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.4.2
         version: 2.4.2
+      '@mdx-js/mdx':
+        specifier: 3.1.1
+        version: 3.1.1
       '@react-email/ui':
         specifier: ^6.11.8
         version: 6.11.8(@babel/core@7.29.13)(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
