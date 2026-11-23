@@ -153,6 +153,26 @@ for (const [slug, uploadDate, day, shown] of reported) {
   });
 }
 
+// Orari reali di pubblicazione su YouTube: non vanno arrotondati (la pillola del 16/11 era scritta 08:00:00Z).
+const youtubeUploads = [
+  ["/video/git-e-github", "2026-11-19T08:00:33Z", "19 novembre 2026"],
+  [`${site.mondayPath}/2026-11-23`, "2026-11-23T08:00:03Z", "23 novembre 2026"],
+  [`${site.mondayPath}/2026-11-16`, "2026-11-16T08:00:09Z", "16 novembre 2026"],
+] as const;
+
+for (const [pagePath, uploadDate, shown] of youtubeUploads) {
+  test(`${pagePath}: data e ora di YouTube in pagina e in sitemap`, () => {
+    const slug = pagePath.split("/").at(-1);
+    const video = videos.find((v) => `/video/${v.slug}` === pagePath);
+    const item = video ?? pillole.find((p) => p.slug === slug);
+    assert.ok(item, `${pagePath} non caricato`);
+    assert.equal(item.date, uploadDate);
+    assert.equal(formatDate(item.date), shown);
+    assert.equal(lastModifiedOf(pagePath), uploadDate);
+    if (video) assert.equal(pageJsonLd(video).uploadDate, uploadDate);
+  });
+}
+
 test("ogni video e ogni puntata del lunedì arriva a JSON-LD e sitemap con un datetime valido", () => {
   assert.ok(videos.length >= 5 && pillole.length >= 3);
   for (const video of videos) {
@@ -179,9 +199,16 @@ test(
   },
   () => {
     const xml = resolveSitemap?.(sitemap) ?? "";
-    for (const [slug, uploadDate] of reported) {
-      const loc = `<loc>${new URL(`/video/${slug}`, site.url)}</loc>`;
-      assert.ok(xml.includes(`${loc}\n<lastmod>${uploadDate}</lastmod>`), slug);
+    const pages = [
+      ...reported.map(([slug, uploadDate]) => [`/video/${slug}`, uploadDate]),
+      ...youtubeUploads,
+    ];
+    for (const [pagePath, uploadDate] of pages) {
+      const loc = `<loc>${new URL(pagePath, site.url)}</loc>`;
+      assert.ok(
+        xml.includes(`${loc}\n<lastmod>${uploadDate}</lastmod>`),
+        pagePath,
+      );
     }
   },
 );
@@ -197,6 +224,7 @@ test("le liste sono dalla più recente, e le puntate attuali restano nello stess
   }
   // Solo l'ordine relativo delle puntate di oggi: una puntata nuova, ovunque cada, non rompe il test.
   const today = [
+    "git-e-github",
     "cosa-e-una-skill",
     "claude-design",
     "grok-bot",
@@ -206,6 +234,11 @@ test("le liste sono dalla più recente, e le puntate attuali restano nello stess
   assert.deepEqual(
     videos.map((v) => v.slug).filter((s) => today.includes(s)),
     today,
+  );
+  const lunedi = ["2026-11-23", "2026-11-16", "2026-11-09", "2026-11-07"];
+  assert.deepEqual(
+    pillole.map((p) => p.slug).filter((s) => lunedi.includes(s)),
+    lunedi,
   );
 });
 

@@ -1,5 +1,6 @@
 import type { StaticImageData } from "next/image";
 import cosaEUnaSkill from "@/content/video/covers/cosa-e-una-skill.webp";
+import gitEGithub from "@/content/video/covers/git-e-github.webp";
 
 /**
  * Copertine ufficiali dei video, per slug. Prendono il posto della miniatura di YouTube;
@@ -7,6 +8,7 @@ import cosaEUnaSkill from "@/content/video/covers/cosa-e-una-skill.webp";
  */
 const videoCovers: Record<string, StaticImageData> = {
   "cosa-e-una-skill": cosaEUnaSkill,
+  "git-e-github": gitEGithub,
 };
 
 export function getVideoCover(slug: string): StaticImageData | undefined {
