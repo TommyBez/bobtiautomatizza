@@ -155,6 +155,7 @@ for (const [slug, uploadDate, day, shown] of reported) {
 
 // Orari reali di pubblicazione su YouTube: non vanno arrotondati (la pillola del 16/11 era scritta 08:00:00Z).
 const youtubeUploads = [
+  ["/video/system-one-models", "2026-11-24T08:28:35Z", "24 novembre 2026"],
   ["/video/git-e-github", "2026-11-19T08:00:33Z", "19 novembre 2026"],
   [`${site.mondayPath}/2026-11-23`, "2026-11-23T08:00:03Z", "23 novembre 2026"],
   [`${site.mondayPath}/2026-11-16`, "2026-11-16T08:00:09Z", "16 novembre 2026"],
@@ -224,6 +225,7 @@ test("le liste sono dalla più recente, e le puntate attuali restano nello stess
   }
   // Solo l'ordine relativo delle puntate di oggi: una puntata nuova, ovunque cada, non rompe il test.
   const today = [
+    "system-one-models",
     "git-e-github",
     "cosa-e-una-skill",
     "claude-design",
