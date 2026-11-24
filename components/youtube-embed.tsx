@@ -6,14 +6,14 @@ import { useState } from "react";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 // Il video si carica solo al clic, dal dominio youtube-nocookie: niente cookie di YouTube prima dell'interazione.
-// Senza `id` (video non ancora uscito su YouTube) si vede solo la copertina, senza pulsante play.
+// Senza `id` (null: video non ancora uscito su YouTube) si vede solo la copertina, senza pulsante play.
 export function YouTubeEmbed({
   id,
   title,
   format,
   cover,
 }: {
-  id: string;
+  id: string | null;
   title: string;
   format: "short" | "long";
   /** Copertina ufficiale: se c'è, sostituisce la miniatura di YouTube. */

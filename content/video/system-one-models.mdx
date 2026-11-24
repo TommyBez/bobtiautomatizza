@@ -1,0 +1,37 @@
+export const metadata = {
+  title: "System One Models: i modelli decisionali spiegati semplice",
+  youtubeTitle: "System One Models: i modelli decisionali spiegati semplice",
+  // IN_ATTESA_DI_YOUTUBE: segnaposto finché il video non è su YouTube (vedi lib/content-core.ts).
+  // Sostituire con l'ID dello Short e con data e ora reali di pubblicazione: fino ad allora il build
+  // di produzione si ferma.
+  youtubeId: "IN_ATTESA_DI_YOUTUBE",
+  format: "short",
+  date: "IN_ATTESA_DI_YOUTUBE",
+  description:
+    "Pensa alle decisioni piccole che un'app o un agente prende di continuo, come capire se un'email è phishing. Spesso a decidere è un LLM, che per rispondere con una parola è lento e costa più del necessario. Nel video ti spiego cosa sono i System One Models, cioè i modelli decisionali.",
+  inBreve: [
+    "In un solo passaggio ti restituisce la probabilità di ogni risposta, senza generare testo.",
+    "La velocità è pazzesca, e il costo è trascurabile.",
+    "Puoi usarli insieme a un LLM.",
+  ],
+  topics: ["Modelli decisionali"],
+  tools: ["Jev", "Decisions API", "Microsoft-Decision-1"],
+};
+
+## Le decisioni piccole
+
+Pensa alle decisioni piccole che un'app o un agente prende di continuo, come capire se un'email è phishing. Spesso a decidere è un LLM, che per rispondere con una parola è lento e costa più del necessario.
+
+## Cosa sono i System One Models
+
+Il nome viene dal Sistema 1 di Daniel Kahneman, il pensiero veloce e automatico. Gli LLM che ragionano sono il Sistema 2, quello lento. Un modello decisionale riceve un contesto e una domanda con le risposte già definite: sì o no, una scelta tra più opzioni, o un punteggio. In un solo passaggio ti restituisce la probabilità di ogni risposta, senza generare testo. Funzionano così Jev di TypeSafe AI, la Decisions API di OpenAI, che gira su GPT-6 Luna, e Microsoft-Decision-1.
+
+## Velocità e costo
+
+La velocità è pazzesca, e il costo è trascurabile. Nel benchmark System1-Arena tutti e tre rispondono di solito in meno di un terzo di secondo, e per mille richieste spendi tra 4 e 11 centesimi di dollaro. Un LLM veloce ci mette più di un secondo e costa 14 centesimi. Il più preciso, che ragiona, ci mette più di due secondi e costa più di 10 dollari. Paghi solo il testo che mandi: le risposte sono gratis.
+
+## Quando usarli
+
+Fuori dai compiti da agente, i migliori sono precisi quanto un LLM veloce. Restano indietro sulle domande di conoscenza e nei compiti da agente lunghi. Puoi usarli insieme a un LLM: il modello decisionale risponde per primo e, se è incerto, il caso passa a un LLM o a una persona.
+
+Guarda le decisioni che il tuo sistema prende ogni giorno. Quelle con sempre le stesse risposte possibili sono le prime da provare.

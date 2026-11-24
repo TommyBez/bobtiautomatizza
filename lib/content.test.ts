@@ -10,14 +10,23 @@ import type { MetadataRoute } from "next";
 import * as runtime from "react/jsx-runtime";
 import {
   type ContentEntry,
+  IN_ATTESA_DI_YOUTUBE,
+  isPublished,
   type PillolaMeta,
+  type PublishedVideo,
+  pendingVideosAllowed,
   slugsIn,
   sortByDateDesc,
   toPillole,
   toVideos,
   type VideoMeta,
 } from "./content-core.ts";
-import { isoDateTimeFormat, parseIsoDateTime, toEpoch } from "./datetime.ts";
+import {
+  type IsoDateTime,
+  isoDateTimeFormat,
+  parseIsoDateTime,
+  toEpoch,
+} from "./datetime.ts";
 import { serializeJsonLd, videoObjectJsonLd } from "./json-ld.ts";
 import { formatDate, site } from "./site.ts";
 import { buildSitemap } from "./sitemap.ts";
@@ -85,7 +94,11 @@ async function loadEntries<Meta>(folder: "video" | "pillole") {
   );
 }
 
-const videos = toVideos(await loadEntries<VideoMeta>("video"));
+// Contenuti caricati come in preview: un video ancora IN_ATTESA_DI_YOUTUBE c'è, senza ID e senza data.
+// Che il build di produzione si fermi lo verifica il test sul segnaposto, in fondo.
+const videos = toVideos(await loadEntries<VideoMeta>("video"), {
+  allowPending: true,
+});
 const pillole = toPillole(await loadEntries<PillolaMeta>("pillole"));
 /** Quello che restituisce app/sitemap.ts e che Next scrive in sitemap.xml. */
 const sitemap = buildSitemap(videos, pillole);
@@ -111,7 +124,7 @@ const resolveSitemap = (() => {
 })();
 
 /** JSON-LD come lo scrive la pagina /video/<slug>: videoObjectJsonLd → <JsonLd> (serializeJsonLd). */
-const pageJsonLd = (video: (typeof videos)[number]) =>
+const pageJsonLd = (video: PublishedVideo) =>
   JSON.parse(serializeJsonLd(videoObjectJsonLd(video))) as {
     uploadDate: string;
   };
@@ -143,7 +156,7 @@ const reported = [
 for (const [slug, uploadDate, day, shown] of reported) {
   test(`/video/${slug}: contenuto → JSON-LD → sitemap con data, ora e fuso`, () => {
     const video = videos.find((v) => v.slug === slug);
-    assert.ok(video, `${slug} non caricato`);
+    assert.ok(video && isPublished(video), `${slug} non caricato`);
     const jsonLd = pageJsonLd(video);
     assert.equal(jsonLd.uploadDate, uploadDate);
     assert.match(jsonLd.uploadDate, isoDateTimeFormat);
@@ -165,17 +178,25 @@ for (const [pagePath, uploadDate, shown] of youtubeUploads) {
     const slug = pagePath.split("/").at(-1);
     const video = videos.find((v) => `/video/${v.slug}` === pagePath);
     const item = video ?? pillole.find((p) => p.slug === slug);
-    assert.ok(item, `${pagePath} non caricato`);
+    assert.ok(item?.date, `${pagePath} non caricato`);
     assert.equal(item.date, uploadDate);
     assert.equal(formatDate(item.date), shown);
     assert.equal(lastModifiedOf(pagePath), uploadDate);
-    if (video) assert.equal(pageJsonLd(video).uploadDate, uploadDate);
+    if (video) {
+      assert.ok(isPublished(video), pagePath);
+      assert.equal(pageJsonLd(video).uploadDate, uploadDate);
+    }
   });
 }
 
 test("ogni video e ogni puntata del lunedì arriva a JSON-LD e sitemap con un datetime valido", () => {
   assert.ok(videos.length >= 5 && pillole.length >= 3);
   for (const video of videos) {
+    if (!isPublished(video)) {
+      // In attesa di YouTube (solo in preview): la pagina è in sitemap, ma senza una data inventata.
+      assert.equal(lastModifiedOf(`/video/${video.slug}`), undefined);
+      continue;
+    }
     const { uploadDate } = pageJsonLd(video);
     assert.doesNotThrow(() => parseIsoDateTime(uploadDate, video.slug));
     assert.ok(!Number.isNaN(toEpoch(video.date)), video.slug);
@@ -213,11 +234,15 @@ test(
   },
 );
 
+/** Istante per l'ordine: un video senza data (in attesa di YouTube) viene dopo tutti, quindi in testa. */
+const epochOf = (date: IsoDateTime | null) =>
+  date === null ? Number.POSITIVE_INFINITY : toEpoch(date);
+
 test("le liste sono dalla più recente, e le puntate attuali restano nello stesso ordine", () => {
   for (const list of [videos, pillole]) {
     for (let i = 1; i < list.length; i++) {
       assert.ok(
-        toEpoch(list[i - 1].date) >= toEpoch(list[i].date),
+        epochOf(list[i - 1].date) >= epochOf(list[i].date),
         list[i].slug,
       );
     }
@@ -256,7 +281,7 @@ test("l'ordine è per istante, non per stringa, e regge le parità", () => {
 
   // Riordinare una lista mescolata dà la stessa sequenza di istanti: si confrontano gli istanti e non
   // gli oggetti, perché a parità d'istante l'ordine tra i due video può cambiare senza essere un errore.
-  const epochs = (list: typeof videos) => list.map((v) => toEpoch(v.date));
+  const epochs = (list: typeof videos) => list.map((v) => epochOf(v.date));
   const withTie = [...videos, { ...videos[0], slug: "copia-stesso-istante" }];
   assert.deepEqual(
     epochs(sortByDateDesc([...videos].reverse())),
@@ -300,6 +325,89 @@ test("il caricamento dei metadati regge gli MDX con import (relativi, alias @/, 
   );
   const metadata = (await readMdxMetadata(file)) as VideoMeta;
   const [video] = toVideos([{ slug: "puntata", metadata }]);
+  assert.ok(isPublished(video));
   assert.equal(video.date, "2026-11-20T10:00:00+01:00");
   assert.equal(pageJsonLd(video).uploadDate, "2026-11-20T10:00:00+01:00");
+});
+
+/** Metadati di un video di prova, con i campi da sostituire. */
+const fixtureVideo = (slug: string, fields: Partial<VideoMeta> = {}) => ({
+  slug,
+  metadata: {
+    title: "T",
+    youtubeTitle: "T",
+    youtubeId: "abc",
+    format: "short",
+    date: "2026-11-20T10:00:00+01:00",
+    description: "d",
+    inBreve: [],
+    topics: [],
+    tools: [],
+    ...fields,
+  } satisfies VideoMeta,
+});
+
+test("segnaposto IN_ATTESA_DI_YOUTUBE: fuori dalla preview il caricamento si ferma e dice cosa manca", () => {
+  const entries = [
+    fixtureVideo("uscito"),
+    fixtureVideo("in-attesa", {
+      youtubeId: IN_ATTESA_DI_YOUTUBE,
+      date: IN_ATTESA_DI_YOUTUBE,
+    }),
+  ];
+  assert.throws(
+    () => toVideos(entries),
+    (error: Error) =>
+      error.message.startsWith(
+        'content/video/in-attesa.mdx: youtubeId e date ancora "IN_ATTESA_DI_YOUTUBE".',
+      ) && error.message.includes("prima di andare in produzione"),
+  );
+  // Anche uno solo dei due dati basta a fermarlo.
+  assert.throws(
+    () =>
+      toVideos([fixtureVideo("senza-data", { date: IN_ATTESA_DI_YOUTUBE })]),
+    /senza-data\.mdx: date ancora "IN_ATTESA_DI_YOUTUBE"/,
+  );
+});
+
+test("segnaposto IN_ATTESA_DI_YOUTUBE: in preview c'è la pagina, senza ID, data, VideoObject né lastmod", () => {
+  const loaded = toVideos(
+    [
+      fixtureVideo("uscito"),
+      fixtureVideo("in-attesa", {
+        youtubeId: IN_ATTESA_DI_YOUTUBE,
+        date: IN_ATTESA_DI_YOUTUBE,
+      }),
+    ],
+    { allowPending: true },
+  );
+  assert.deepEqual(
+    loaded.map((v) => v.slug),
+    ["in-attesa", "uscito"], // il video in attesa è il più nuovo: in testa alle liste
+  );
+  const [pending, published] = loaded;
+  assert.equal(pending.youtubeId, null);
+  assert.equal(pending.date, null);
+  assert.equal(isPublished(pending), false); // la pagina non scrive il VideoObject
+  assert.equal(isPublished(published), true);
+  const entries = buildSitemap(loaded, []);
+  const entry = entries.find((e) => e.url.endsWith("/video/in-attesa"));
+  assert.ok(entry);
+  assert.equal("lastModified" in entry, false);
+  // Con i dati veri al posto del segnaposto, lo stesso file torna un video normale.
+  const [done] = toVideos([fixtureVideo("in-attesa")]);
+  assert.ok(isPublished(done));
+});
+
+test("il segnaposto è ammesso solo in preview su Vercel e in next dev", () => {
+  assert.equal(pendingVideosAllowed({ VERCEL_ENV: "preview" }), true);
+  assert.equal(pendingVideosAllowed({ NODE_ENV: "development" }), true);
+  // next build imposta NODE_ENV=production: fuori dalla preview il build si ferma, anche in locale.
+  for (const env of [
+    { VERCEL_ENV: "production", NODE_ENV: "production" },
+    { NODE_ENV: "production" },
+    {},
+  ]) {
+    assert.equal(pendingVideosAllowed(env), false, JSON.stringify(env));
+  }
 });

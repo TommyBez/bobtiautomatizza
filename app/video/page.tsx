@@ -53,7 +53,7 @@ export default async function VideoPage() {
                 {v.title}
               </h2>
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-                <span>{formatShortDate(v.date)}</span>
+                {v.date ? <span>{formatShortDate(v.date)}</span> : null}
                 {v.tools.map((t) => (
                   <Badge key={t} variant="secondary">
                     {t}
