@@ -23,7 +23,7 @@ export default async function Image({
   if (!video) notFound();
 
   return ogImage({
-    eyebrow: video.date ? `Video · ${formatDate(video.date)}` : "Video",
+    eyebrow: `Video · ${formatDate(video.date)}`,
     title: video.title,
     tags: ["Senza codice", ...video.tools].slice(0, 4),
   });

@@ -29,9 +29,8 @@ export function VideoList({ videos }: { videos: Video[] }) {
           render={<Link href={`/video/${v.slug}`} />}
           className="items-start gap-4 rounded-none px-0 py-5 [a]:hover:bg-transparent sm:gap-6"
         >
-          {/* Senza data (video in attesa di YouTube) la colonna resta vuota, per l'allineamento. */}
           <span className="w-14 shrink-0 pt-1 font-mono text-xs text-muted-foreground">
-            {v.date ? formatShortDate(v.date) : null}
+            {formatShortDate(v.date)}
           </span>
           <ItemContent>
             <ItemTitle className="font-heading text-xl leading-snug font-semibold group-hover/item:text-primary">

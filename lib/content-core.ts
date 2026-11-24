@@ -2,19 +2,7 @@
 // (vedi content.test.ts). Qui restano fuori solo l'import degli MDX e la cache, che dipendono dal bundler.
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import {
-  type IsoDateTime,
-  parseIsoDateTime,
-  toEpoch,
-  withValidDate,
-} from "./datetime.ts";
-import {
-  IN_ATTESA_DI_YOUTUBE,
-  pendingVideosAllowed,
-  pendingVideosError,
-} from "./pending-videos.ts";
-
-export { IN_ATTESA_DI_YOUTUBE, pendingVideosAllowed };
+import { type IsoDateTime, toEpoch, withValidDate } from "./datetime.ts";
 
 /** Un video divulgativo. I metadati stanno in `export const metadata` dentro `content/video/<slug>.mdx`. */
 export type VideoMeta = {
@@ -22,14 +10,12 @@ export type VideoMeta = {
   title: string;
   /** Titolo del video su YouTube, mostrato come sottotitolo. */
   youtubeTitle: string;
-  /** ID del video su YouTube, oppure `IN_ATTESA_DI_YOUTUBE` finché il video non è uscito. */
   youtubeId: string;
   /** "short" = verticale 9:16, "long" = orizzontale 16:9. */
   format: "short" | "long";
   /**
    * Data e ora di pubblicazione su YouTube, ISO 8601 in UTC con "Z" (es. "2026-11-12T08:00:31Z")
    * o con l'offset di Europe/Rome. Il caricamento la valida: una data sbagliata ferma test e build.
-   * Finché il video non è uscito: `IN_ATTESA_DI_YOUTUBE`.
    */
   date: string;
   description: string;
@@ -39,25 +25,11 @@ export type VideoMeta = {
   tools: string[];
 };
 
-type VideoBase = Omit<VideoMeta, "date" | "youtubeId"> & { slug: string };
-
-/** Video uscito su YouTube: ID e data validati, quindi player, data in pagina, VideoObject e lastmod. */
-export type PublishedVideo = VideoBase & {
-  youtubeId: string;
-  date: IsoDateTime;
-};
-
-/**
- * Video in attesa di YouTube (nell'MDX c'è ancora `IN_ATTESA_DI_YOUTUBE` in `youtubeId` o in `date`):
- * esiste solo in preview, senza ID e senza data finché non ci sono entrambi.
- */
-export type PendingVideo = VideoBase & { youtubeId: null; date: null };
-
 /** Video caricato: `date` è già validata, quindi va direttamente nei dati strutturati. */
-export type Video = PublishedVideo | PendingVideo;
-
-export const isPublished = (video: Video): video is PublishedVideo =>
-  video.date !== null;
+export type Video = Omit<VideoMeta, "date"> & {
+  date: IsoDateTime;
+  slug: string;
+};
 
 export type PillolaMeta = {
   title: string;
@@ -89,65 +61,21 @@ export async function slugsIn(folder: "video" | "pillole") {
     .map((f) => f.replace(/\.mdx$/, ""));
 }
 
-/**
- * Ordine delle liste del sito: dal più recente, per istante (con fusi diversi l'ordine alfabetico sbaglia).
- * Un video senza data (in attesa di YouTube) esce dopo tutti gli altri, quindi va in testa.
- */
-export function sortByDateDesc<T extends { date: IsoDateTime | null }>(
+/** Ordine delle liste del sito: dal più recente, per istante (con fusi diversi l'ordine alfabetico sbaglia). */
+export function sortByDateDesc<T extends { date: IsoDateTime }>(
   items: T[],
 ): T[] {
-  const epoch = (item: T) =>
-    item.date === null ? Number.POSITIVE_INFINITY : toEpoch(item.date);
-  return [...items].sort((a, b) => {
-    const [ea, eb] = [epoch(a), epoch(b)];
-    return ea === eb ? 0 : eb > ea ? 1 : -1; // Infinity - Infinity darebbe NaN
-  });
+  return [...items].sort((a, b) => toEpoch(b.date) - toEpoch(a.date));
 }
 
-/** ID di un video YouTube: 11 caratteri tra lettere, cifre, "-" e "_". */
-const youtubeIdFormat = /^[A-Za-z0-9_-]{11}$/;
-
-function toVideo(
-  { slug, metadata }: ContentEntry<VideoMeta>,
-  env: Record<string, string | undefined>,
-): Video {
-  const file = `content/video/${slug}.mdx`;
-  const pending = (["youtubeId", "date"] as const).filter(
-    (field) => metadata[field] === IN_ATTESA_DI_YOUTUBE,
+/** Valida le date (vedi lib/datetime.ts) e ordina: è quello che restituisce `getVideos()`. */
+export function toVideos(entries: ContentEntry<VideoMeta>[]): Video[] {
+  return sortByDateDesc(
+    entries.map(({ slug, metadata }) => ({
+      ...withValidDate(metadata, `content/video/${slug}.mdx`),
+      slug,
+    })),
   );
-  // Anche in attesa, il dato già scritto deve essere valido: un refuso non aspetta la pubblicazione.
-  if (
-    !pending.includes("youtubeId") &&
-    !youtubeIdFormat.test(String(metadata.youtubeId))
-  ) {
-    throw new Error(
-      `${file}: youtubeId ${JSON.stringify(metadata.youtubeId)} non è un ID YouTube ` +
-        `(11 caratteri tra lettere, cifre, "-" e "_"). Se il video non è ancora uscito: ` +
-        `${JSON.stringify(IN_ATTESA_DI_YOUTUBE)}.`,
-    );
-  }
-  const date = pending.includes("date")
-    ? null
-    : parseIsoDateTime(metadata.date, `${file}: date`);
-  if (pending.length === 0 && date !== null) {
-    return { ...metadata, slug, date };
-  }
-  if (!pendingVideosAllowed(env)) {
-    throw pendingVideosError(file, pending.join(" e "));
-  }
-  return { ...metadata, slug, youtubeId: null, date: null };
-}
-
-/**
- * Valida ID e date e ordina: è quello che restituisce `getVideos()`. Un video con il segnaposto
- * `IN_ATTESA_DI_YOUTUBE` lancia un errore se l'ambiente (`env`, di default quello del processo) non è
- * una preview: è questo che ferma il build di produzione (vedi lib/pending-videos.ts).
- */
-export function toVideos(
-  entries: ContentEntry<VideoMeta>[],
-  env: Record<string, string | undefined> = process.env,
-): Video[] {
-  return sortByDateDesc(entries.map((entry) => toVideo(entry, env)));
 }
 
 /** Come `toVideos`, per le puntate del lunedì: è quello che restituisce `getPillole()`. */

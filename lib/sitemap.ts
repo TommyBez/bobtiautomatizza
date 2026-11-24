@@ -3,10 +3,7 @@ import type { MetadataRoute } from "next";
 import type { Pillola, Video } from "./content-core.ts";
 import { site } from "./site.ts";
 
-/**
- * Voci della sitemap. `lastModified` dei contenuti è la loro `date`, già validata al caricamento.
- * Un video in attesa di YouTube (solo in preview) non ha data: la voce c'è, senza `lastModified`.
- */
+/** Voci della sitemap. `lastModified` dei contenuti è la loro `date`, già validata al caricamento. */
 export function buildSitemap(
   videos: Video[],
   pillole: Pillola[],
@@ -24,7 +21,7 @@ export function buildSitemap(
     { url: url("/cookie"), changeFrequency: "yearly", priority: 0.2 },
     ...videos.map((v) => ({
       url: url(`/video/${v.slug}`),
-      ...(v.date ? { lastModified: v.date } : {}),
+      lastModified: v.date,
       priority: 0.8,
     })),
     ...pillole.map((p) => ({

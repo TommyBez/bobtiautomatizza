@@ -11,14 +11,11 @@ import {
 } from "./content-core.ts";
 
 export type {
-  PendingVideo,
   Pillola,
   PillolaMeta,
-  PublishedVideo,
   Video,
   VideoMeta,
 } from "./content-core.ts";
-export { isPublished } from "./content-core.ts";
 
 // L'import degli MDX resta qui perché lo risolve il bundler; validazione e ordine stanno in content-core.ts.
 
@@ -34,7 +31,6 @@ export async function getVideos(): Promise<Video[]> {
       return { slug, metadata };
     }),
   );
-  // L'ambiente è quello del processo: un segnaposto IN_ATTESA_DI_YOUTUBE ferma il build di produzione.
   return toVideos(entries);
 }
 

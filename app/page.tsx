@@ -11,7 +11,7 @@ import {
 } from "@/components/content-blocks";
 import { NewsletterForm } from "@/components/newsletter-form";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { getPillole, getVideos, isPublished } from "@/lib/content";
+import { getPillole, getVideos } from "@/lib/content";
 import { site } from "@/lib/site";
 
 // Etichette barrate attorno a Bob: lavori ripetitivi presi dai video.
@@ -184,11 +184,7 @@ export default async function Home() {
             <NewsletterForm tone="dark" className="mt-8 max-w-md" />
           </div>
           {pillola ? (
-            <EmailPreview
-              pillola={pillola}
-              // L'anteprima elenca i video usciti: uno in attesa di YouTube non c'è ancora.
-              videos={videos.filter(isPublished).slice(0, 2)}
-            />
+            <EmailPreview pillola={pillola} videos={videos.slice(0, 2)} />
           ) : null}
         </div>
       </section>

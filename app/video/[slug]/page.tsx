@@ -11,7 +11,7 @@ import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { YouTubeEmbed } from "@/components/youtube-embed";
-import { getVideos, isPublished } from "@/lib/content";
+import { getVideos } from "@/lib/content";
 import { videoObjectJsonLd } from "@/lib/json-ld";
 import { formatDate, openGraphDefaults, site } from "@/lib/site";
 import { getVideoCover } from "@/lib/video-covers";
@@ -72,10 +72,7 @@ async function VideoDetail({ params }: { params: Params }) {
   if (!video) notFound();
 
   const { default: Body } = await import(`@/content/video/${slug}.mdx`);
-  // Un video in attesa di YouTube non si consiglia dalle altre pagine: non c'è ancora niente da guardare.
-  const others = (await getVideos())
-    .filter((v) => v.slug !== slug && isPublished(v))
-    .slice(0, 3);
+  const others = (await getVideos()).filter((v) => v.slug !== slug).slice(0, 3);
   const cover = getVideoCover(slug);
 
   return (
@@ -94,13 +91,8 @@ async function VideoDetail({ params }: { params: Params }) {
           </p>
         ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          {/* Senza data (video in attesa di YouTube, solo in preview) non si mostra nulla. */}
-          {video.date ? (
-            <>
-              <time dateTime={video.date}>{formatDate(video.date)}</time>
-              <span aria-hidden="true">·</span>
-            </>
-          ) : null}
+          <time dateTime={video.date}>{formatDate(video.date)}</time>
+          <span aria-hidden="true">·</span>
           <Badge variant="outline">Senza codice</Badge>
           {video.tools.map((t) => (
             <Badge key={t} variant="secondary">
@@ -190,8 +182,8 @@ async function VideoDetail({ params }: { params: Params }) {
         </section>
       ) : null}
 
-      {/* Senza ID e data di YouTube non c'è ancora un video da descrivere: niente VideoObject. */}
-      {isPublished(video) ? (
+      {/* Senza l'ID di YouTube non c'è ancora un video da descrivere: niente VideoObject. */}
+      {video.youtubeId ? (
         <JsonLd
           data={videoObjectJsonLd(
             video,
