@@ -94,11 +94,13 @@ async function loadEntries<Meta>(folder: "video" | "pillole") {
   );
 }
 
+/** Ambiente di una preview Vercel: l'unico (con next dev) in cui un video IN_ATTESA_DI_YOUTUBE è ammesso. */
+const PREVIEW = { VERCEL_ENV: "preview" };
+
 // Contenuti caricati come in preview: un video ancora IN_ATTESA_DI_YOUTUBE c'è, senza ID e senza data.
-// Che il build di produzione si fermi lo verifica il test sul segnaposto, in fondo.
-const videos = toVideos(await loadEntries<VideoMeta>("video"), {
-  allowPending: true,
-});
+// Che fuori dalla preview il caricamento si fermi lo verificano i test sul segnaposto, in fondo, e
+// pending-video.build.test.ts sul build vero.
+const videos = toVideos(await loadEntries<VideoMeta>("video"), PREVIEW);
 const pillole = toPillole(await loadEntries<PillolaMeta>("pillole"));
 /** Quello che restituisce app/sitemap.ts e che Next scrive in sitemap.xml. */
 const sitemap = buildSitemap(videos, pillole);
@@ -274,7 +276,10 @@ test("l'ordine è per istante, non per stringa, e regge le parità", () => {
     { slug: "dopo", metadata: { date: "2026-11-12T08:30:00Z" } },
     // Stesso istante di "prima", scritto in UTC: a parità vale qualsiasi ordine tra i due.
     { slug: "stesso-istante", metadata: { date: "2026-11-12T08:00:31Z" } },
-  ] as ContentEntry<VideoMeta>[];
+  ].map((e) => ({
+    ...e,
+    metadata: { ...e.metadata, youtubeId: "abcdefghijk" },
+  })) as ContentEntry<VideoMeta>[];
   const sorted = toVideos(entries).map((v) => v.slug);
   assert.equal(sorted[0], "dopo");
   assert.deepEqual(sorted.slice(1).sort(), ["prima", "stesso-istante"]);
@@ -310,7 +315,7 @@ test("il caricamento dei metadati regge gli MDX con import (relativi, alias @/, 
       "export const metadata = {",
       '  title: "T",',
       '  youtubeTitle: "T",',
-      '  youtubeId: "abc",',
+      '  youtubeId: "abcdefghijk",',
       '  format: "short",',
       '  date: "2026-11-20T10:00:00+01:00",',
       '  description: "d",',
@@ -331,12 +336,15 @@ test("il caricamento dei metadati regge gli MDX con import (relativi, alias @/, 
 });
 
 /** Metadati di un video di prova, con i campi da sostituire. */
-const fixtureVideo = (slug: string, fields: Partial<VideoMeta> = {}) => ({
+const fixtureVideo = (
+  slug: string,
+  fields: Partial<Record<keyof VideoMeta, unknown>> = {},
+) => ({
   slug,
   metadata: {
     title: "T",
     youtubeTitle: "T",
-    youtubeId: "abc",
+    youtubeId: "abcdefghijk",
     format: "short",
     date: "2026-11-20T10:00:00+01:00",
     description: "d",
@@ -344,43 +352,66 @@ const fixtureVideo = (slug: string, fields: Partial<VideoMeta> = {}) => ({
     topics: [],
     tools: [],
     ...fields,
-  } satisfies VideoMeta,
+  } as VideoMeta,
 });
 
-test("segnaposto IN_ATTESA_DI_YOUTUBE: fuori dalla preview il caricamento si ferma e dice cosa manca", () => {
-  const entries = [
-    fixtureVideo("uscito"),
-    fixtureVideo("in-attesa", {
-      youtubeId: IN_ATTESA_DI_YOUTUBE,
-      date: IN_ATTESA_DI_YOUTUBE,
-    }),
+const inAttesa = fixtureVideo("in-attesa", {
+  youtubeId: IN_ATTESA_DI_YOUTUBE,
+  date: IN_ATTESA_DI_YOUTUBE,
+});
+
+test("segnaposto: fuori dalla preview il caricamento si ferma e dice cosa manca", () => {
+  const notPreview = [
+    {}, // next build / next start senza variabili (NODE_ENV=production)
+    { NODE_ENV: "production" },
+    { VERCEL_ENV: "production" },
+    // Il target di produzione ha la precedenza sulla preview e su next dev.
+    { VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "production" },
+    { NODE_ENV: "development", VERCEL_TARGET_ENV: "production" },
+    { NODE_ENV: "development", VERCEL_ENV: "production" },
+    // Un ambiente personalizzato di Vercel non è una preview.
+    { VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "staging" },
   ];
-  assert.throws(
-    () => toVideos(entries),
-    (error: Error) =>
-      error.message.startsWith(
-        'content/video/in-attesa.mdx: youtubeId e date ancora "IN_ATTESA_DI_YOUTUBE".',
-      ) && error.message.includes("prima di andare in produzione"),
-  );
+  for (const env of notPreview) {
+    assert.equal(pendingVideosAllowed(env), false, JSON.stringify(env));
+    assert.throws(
+      () => toVideos([fixtureVideo("uscito"), inAttesa], env),
+      (error: Error) =>
+        error.message.startsWith(
+          'content/video/in-attesa.mdx: youtubeId e date ancora "IN_ATTESA_DI_YOUTUBE".',
+        ) && error.message.includes("prima di andare in produzione"),
+      JSON.stringify(env),
+    );
+  }
   // Anche uno solo dei due dati basta a fermarlo.
   assert.throws(
     () =>
-      toVideos([fixtureVideo("senza-data", { date: IN_ATTESA_DI_YOUTUBE })]),
+      toVideos(
+        [fixtureVideo("senza-data", { date: IN_ATTESA_DI_YOUTUBE })],
+        {},
+      ),
     /senza-data\.mdx: date ancora "IN_ATTESA_DI_YOUTUBE"/,
   );
+  // Ammesso solo in preview (con target preview o assente) e in next dev.
+  for (const env of [
+    PREVIEW,
+    { VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "preview" },
+    { NODE_ENV: "development" },
+  ]) {
+    assert.equal(pendingVideosAllowed(env), true, JSON.stringify(env));
+  }
 });
 
-test("segnaposto IN_ATTESA_DI_YOUTUBE: in preview c'è la pagina, senza ID, data, VideoObject né lastmod", () => {
-  const loaded = toVideos(
-    [
-      fixtureVideo("uscito"),
-      fixtureVideo("in-attesa", {
-        youtubeId: IN_ATTESA_DI_YOUTUBE,
-        date: IN_ATTESA_DI_YOUTUBE,
-      }),
-    ],
-    { allowPending: true },
-  );
+test("segnaposto: getVideos() usa l'ambiente del processo, senza modo di forzarlo", () => {
+  // toVideos senza `env` legge process.env, come fa lib/content.ts: qui (node --test) non è una preview,
+  // a meno che chi lancia i test non la imposti.
+  const expectThrow = !pendingVideosAllowed(process.env);
+  if (expectThrow) assert.throws(() => toVideos([inAttesa]), /in-attesa\.mdx/);
+  else assert.doesNotThrow(() => toVideos([inAttesa]));
+});
+
+test("segnaposto: in preview c'è la pagina, senza ID, data, VideoObject né lastmod", () => {
+  const loaded = toVideos([fixtureVideo("uscito"), inAttesa], PREVIEW);
   assert.deepEqual(
     loaded.map((v) => v.slug),
     ["in-attesa", "uscito"], // il video in attesa è il più nuovo: in testa alle liste
@@ -390,24 +421,69 @@ test("segnaposto IN_ATTESA_DI_YOUTUBE: in preview c'è la pagina, senza ID, data
   assert.equal(pending.date, null);
   assert.equal(isPublished(pending), false); // la pagina non scrive il VideoObject
   assert.equal(isPublished(published), true);
-  const entries = buildSitemap(loaded, []);
-  const entry = entries.find((e) => e.url.endsWith("/video/in-attesa"));
+  const entry = buildSitemap(loaded, []).find((e) =>
+    e.url.endsWith("/video/in-attesa"),
+  );
   assert.ok(entry);
   assert.equal("lastModified" in entry, false);
-  // Con i dati veri al posto del segnaposto, lo stesso file torna un video normale.
-  const [done] = toVideos([fixtureVideo("in-attesa")]);
+  // Con i dati veri al posto del segnaposto, lo stesso file torna un video normale, anche in produzione.
+  const [done] = toVideos([fixtureVideo("in-attesa")], {});
   assert.ok(isPublished(done));
 });
 
-test("il segnaposto è ammesso solo in preview su Vercel e in next dev", () => {
-  assert.equal(pendingVideosAllowed({ VERCEL_ENV: "preview" }), true);
-  assert.equal(pendingVideosAllowed({ NODE_ENV: "development" }), true);
-  // next build imposta NODE_ENV=production: fuori dalla preview il build si ferma, anche in locale.
-  for (const env of [
-    { VERCEL_ENV: "production", NODE_ENV: "production" },
-    { NODE_ENV: "production" },
-    {},
+test("segnaposto: un solo stato «in attesa» finché mancano ID o data", () => {
+  // Con un solo dato vero il video resta in attesa: niente player senza data, niente lastmod senza ID.
+  for (const fields of [
+    { youtubeId: IN_ATTESA_DI_YOUTUBE },
+    { date: IN_ATTESA_DI_YOUTUBE },
   ]) {
-    assert.equal(pendingVideosAllowed(env), false, JSON.stringify(env));
+    const [video] = toVideos([fixtureVideo("a-meta", fields)], PREVIEW);
+    assert.equal(video.youtubeId, null, JSON.stringify(fields));
+    assert.equal(video.date, null, JSON.stringify(fields));
+    const [entry] = buildSitemap([video], []).filter((e) =>
+      e.url.endsWith("/video/a-meta"),
+    );
+    assert.equal("lastModified" in entry, false);
+  }
+  // Il dato già scritto si valida comunque: una data sbagliata non aspetta l'ID.
+  assert.throws(
+    () =>
+      toVideos(
+        [
+          fixtureVideo("a-meta", {
+            youtubeId: IN_ATTESA_DI_YOUTUBE,
+            date: "2026-11-24",
+          }),
+        ],
+        PREVIEW,
+      ),
+    /a-meta\.mdx: date: "2026-11-24" non ha il fuso orario/,
+  );
+});
+
+test("youtubeId: vuoto, mancante o con un refuso nel segnaposto ferma il caricamento, anche in preview", () => {
+  const invalid = [
+    "",
+    undefined,
+    "IN_ATTESA_DI_YOTUBE", // refuso nel segnaposto
+    "in_attesa_di_youtube",
+    "abc",
+    "https://youtu.be/gJ2ZBskri9E",
+    "gJ2ZBskri9E ",
+  ];
+  for (const youtubeId of invalid) {
+    for (const env of [PREVIEW, {}]) {
+      assert.throws(
+        () => toVideos([fixtureVideo("puntata", { youtubeId })], env),
+        /puntata\.mdx: youtubeId .* non è un ID YouTube/,
+        JSON.stringify(youtubeId),
+      );
+    }
+  }
+  // Gli ID veri hanno 11 caratteri tra lettere, cifre, "-" e "_" (es. quelli già pubblicati).
+  for (const youtubeId of ["gJ2ZBskri9E", "TaWp_uYe06o", "Oa94v-_JdT8"]) {
+    assert.doesNotThrow(() =>
+      toVideos([fixtureVideo("puntata", { youtubeId })], {}),
+    );
   }
 });

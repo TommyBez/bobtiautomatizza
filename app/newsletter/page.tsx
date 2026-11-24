@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { EmailPreview } from "@/components/content-blocks";
 import { NewsletterForm } from "@/components/newsletter-form";
-import { getPillole, getVideos } from "@/lib/content";
+import { getPillole, getVideos, isPublished } from "@/lib/content";
 import { site } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -32,7 +32,11 @@ export default async function NewsletterPage() {
           <p className="mb-4 font-mono text-xs tracking-widest text-primary uppercase">
             Cosa ti arriva
           </p>
-          <EmailPreview pillola={pillola} videos={videos.slice(0, 2)} />
+          <EmailPreview
+            pillola={pillola}
+            // L'anteprima elenca i video usciti: uno in attesa di YouTube non c'è ancora.
+            videos={videos.filter(isPublished).slice(0, 2)}
+          />
         </div>
       ) : null}
     </div>

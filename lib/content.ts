@@ -3,7 +3,6 @@ import { cacheLife } from "next/cache";
 import {
   type Pillola,
   type PillolaMeta,
-  pendingVideosAllowed,
   slugsIn,
   toPillole,
   toVideos,
@@ -12,6 +11,7 @@ import {
 } from "./content-core.ts";
 
 export type {
+  PendingVideo,
   Pillola,
   PillolaMeta,
   PublishedVideo,
@@ -34,8 +34,8 @@ export async function getVideos(): Promise<Video[]> {
       return { slug, metadata };
     }),
   );
-  // Un segnaposto IN_ATTESA_DI_YOUTUBE ferma il build di produzione: vedi pendingVideosAllowed.
-  return toVideos(entries, { allowPending: pendingVideosAllowed() });
+  // L'ambiente è quello del processo: un segnaposto IN_ATTESA_DI_YOUTUBE ferma il build di produzione.
+  return toVideos(entries);
 }
 
 export async function getPillole(): Promise<Pillola[]> {

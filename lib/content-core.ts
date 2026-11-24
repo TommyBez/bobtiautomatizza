@@ -8,15 +8,13 @@ import {
   toEpoch,
   withValidDate,
 } from "./datetime.ts";
+import {
+  IN_ATTESA_DI_YOUTUBE,
+  pendingVideosAllowed,
+  pendingVideosError,
+} from "./pending-videos.ts";
 
-/**
- * Segnaposto per i dati che esistono solo dopo l'uscita del video su YouTube: l'ID (`youtubeId`) e
- * la data e ora di pubblicazione (`date`). Si scrive così com'è nel `metadata` dell'MDX, al posto del
- * valore che manca. Con il segnaposto la pagina va in preview senza player, senza data e senza
- * VideoObject; il build di produzione invece si ferma (vedi `pendingVideosAllowed`).
- * Per toglierlo basta sostituirlo nell'MDX con l'ID e la data veri.
- */
-export const IN_ATTESA_DI_YOUTUBE = "IN_ATTESA_DI_YOUTUBE";
+export { IN_ATTESA_DI_YOUTUBE, pendingVideosAllowed };
 
 /** Un video divulgativo. I metadati stanno in `export const metadata` dentro `content/video/<slug>.mdx`. */
 export type VideoMeta = {
@@ -41,21 +39,25 @@ export type VideoMeta = {
   tools: string[];
 };
 
-/**
- * Video caricato: `date` è già validata, quindi va direttamente nei dati strutturati.
- * `youtubeId` e `date` sono `null` se nell'MDX c'è ancora `IN_ATTESA_DI_YOUTUBE` (solo in preview).
- */
-export type Video = Omit<VideoMeta, "date" | "youtubeId"> & {
-  youtubeId: string | null;
-  date: IsoDateTime | null;
-  slug: string;
+type VideoBase = Omit<VideoMeta, "date" | "youtubeId"> & { slug: string };
+
+/** Video uscito su YouTube: ID e data validati, quindi player, data in pagina, VideoObject e lastmod. */
+export type PublishedVideo = VideoBase & {
+  youtubeId: string;
+  date: IsoDateTime;
 };
 
-/** Video uscito su YouTube: ha ID e data veri, quindi player, data in pagina, VideoObject e lastmod. */
-export type PublishedVideo = Video & { youtubeId: string; date: IsoDateTime };
+/**
+ * Video in attesa di YouTube (nell'MDX c'è ancora `IN_ATTESA_DI_YOUTUBE` in `youtubeId` o in `date`):
+ * esiste solo in preview, senza ID e senza data finché non ci sono entrambi.
+ */
+export type PendingVideo = VideoBase & { youtubeId: null; date: null };
+
+/** Video caricato: `date` è già validata, quindi va direttamente nei dati strutturati. */
+export type Video = PublishedVideo | PendingVideo;
 
 export const isPublished = (video: Video): video is PublishedVideo =>
-  video.youtubeId !== null && video.date !== null;
+  video.date !== null;
 
 export type PillolaMeta = {
   title: string;
@@ -102,53 +104,50 @@ export function sortByDateDesc<T extends { date: IsoDateTime | null }>(
   });
 }
 
-/**
- * Il segnaposto `IN_ATTESA_DI_YOUTUBE` è ammesso solo dove serve vedere la pagina prima dell'uscita:
- * preview di Vercel (`VERCEL_ENV=preview`) e `next dev`. Ovunque altro, compreso il build di produzione
- * su Vercel e un `next build` locale, il caricamento si ferma. Per un build di preview in locale:
- * `VERCEL_ENV=preview pnpm build`.
- */
-export function pendingVideosAllowed(
-  env: Record<string, string | undefined> = process.env,
-) {
-  return env.VERCEL_ENV === "preview" || env.NODE_ENV === "development";
-}
+/** ID di un video YouTube: 11 caratteri tra lettere, cifre, "-" e "_". */
+const youtubeIdFormat = /^[A-Za-z0-9_-]{11}$/;
 
 function toVideo(
   { slug, metadata }: ContentEntry<VideoMeta>,
-  allowPending: boolean,
+  env: Record<string, string | undefined>,
 ): Video {
   const file = `content/video/${slug}.mdx`;
   const pending = (["youtubeId", "date"] as const).filter(
     (field) => metadata[field] === IN_ATTESA_DI_YOUTUBE,
   );
-  if (pending.length > 0 && !allowPending) {
+  // Anche in attesa, il dato già scritto deve essere valido: un refuso non aspetta la pubblicazione.
+  if (
+    !pending.includes("youtubeId") &&
+    !youtubeIdFormat.test(String(metadata.youtubeId))
+  ) {
     throw new Error(
-      `${file}: ${pending.join(" e ")} ancora ${JSON.stringify(IN_ATTESA_DI_YOUTUBE)}. ` +
-        "Il video non è ancora su YouTube: prima di andare in produzione sostituisci il segnaposto " +
-        "con l'ID del video e con data e ora reali di pubblicazione, in ISO 8601 con fuso (AAAA-MM-GGThh:mm:ssZ). " +
-        "Il segnaposto è ammesso solo nelle preview (VERCEL_ENV=preview) e in next dev.",
+      `${file}: youtubeId ${JSON.stringify(metadata.youtubeId)} non è un ID YouTube ` +
+        `(11 caratteri tra lettere, cifre, "-" e "_"). Se il video non è ancora uscito: ` +
+        `${JSON.stringify(IN_ATTESA_DI_YOUTUBE)}.`,
     );
   }
-  return {
-    ...metadata,
-    slug,
-    youtubeId: pending.includes("youtubeId") ? null : metadata.youtubeId,
-    date: pending.includes("date")
-      ? null
-      : parseIsoDateTime(metadata.date, `${file}: date`),
-  };
+  const date = pending.includes("date")
+    ? null
+    : parseIsoDateTime(metadata.date, `${file}: date`);
+  if (pending.length === 0 && date !== null) {
+    return { ...metadata, slug, date };
+  }
+  if (!pendingVideosAllowed(env)) {
+    throw pendingVideosError(file, pending.join(" e "));
+  }
+  return { ...metadata, slug, youtubeId: null, date: null };
 }
 
 /**
- * Valida le date (vedi lib/datetime.ts) e ordina: è quello che restituisce `getVideos()`.
- * Con `allowPending: false` (il default) un segnaposto `IN_ATTESA_DI_YOUTUBE` lancia un errore.
+ * Valida ID e date e ordina: è quello che restituisce `getVideos()`. Un video con il segnaposto
+ * `IN_ATTESA_DI_YOUTUBE` lancia un errore se l'ambiente (`env`, di default quello del processo) non è
+ * una preview: è questo che ferma il build di produzione (vedi lib/pending-videos.ts).
  */
 export function toVideos(
   entries: ContentEntry<VideoMeta>[],
-  { allowPending = false }: { allowPending?: boolean } = {},
+  env: Record<string, string | undefined> = process.env,
 ): Video[] {
-  return sortByDateDesc(entries.map((entry) => toVideo(entry, allowPending)));
+  return sortByDateDesc(entries.map((entry) => toVideo(entry, env)));
 }
 
 /** Come `toVideos`, per le puntate del lunedì: è quello che restituisce `getPillole()`. */

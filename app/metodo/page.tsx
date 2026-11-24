@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Eyebrow } from "@/components/content-blocks";
 import { NewsletterForm } from "@/components/newsletter-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getVideos } from "@/lib/content";
+import { getVideos, isPublished } from "@/lib/content";
 import { metodo } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -29,7 +29,8 @@ const details: Record<string, string[]> = {
 };
 
 export default async function MetodoPage() {
-  const videos = await getVideos();
+  // Il metodo si mostra sui video usciti: uno in attesa di YouTube non c'è ancora.
+  const videos = (await getVideos()).filter(isPublished);
 
   return (
     <div className="mx-auto max-w-4xl px-4 pt-6 pb-16 sm:px-6">
