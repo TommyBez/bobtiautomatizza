@@ -1,5 +1,6 @@
 import type { StaticImageData } from "next/image";
 import cosaEUnaSkill from "@/content/video/covers/cosa-e-una-skill.webp";
+import firecrawl from "@/content/video/covers/firecrawl.webp";
 import gitEGithub from "@/content/video/covers/git-e-github.webp";
 import systemOneModels from "@/content/video/covers/system-one-models.webp";
 
@@ -9,6 +10,7 @@ import systemOneModels from "@/content/video/covers/system-one-models.webp";
  */
 const videoCovers: Record<string, StaticImageData> = {
   "cosa-e-una-skill": cosaEUnaSkill,
+  firecrawl,
   "git-e-github": gitEGithub,
   "system-one-models": systemOneModels,
 };
